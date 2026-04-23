@@ -4,15 +4,14 @@ import csv
 import pandas as pd
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# Setting parameters
-CAVE_LENGTH = 100
+# Simulation Parameters
+CAVE_LENGTH = 300
 NUM_MOLECULES = 10000  # Number of molecules per simulation
 TOTAL_SIMULATIONS = 100  # Number of simulation loops
 CAVE_WIDTH = 100
 CAVE_HEIGHT = 60
 Z_ORIGIN = 0
 
-# Existing functions with renamed parameters and functions
 def get_velocity_x(x, y, z, phi, psi):
     if z == Z_ORIGIN or z == -Z_ORIGIN:
         return np.cos(phi) * np.cos(psi)
@@ -77,96 +76,80 @@ def calculate_time_z(x, y, z, phi, psi):
         return z / abs(vz)
 
 def get_minimum_time(x, y, z, phi, psi):
-    tmin = min(
+    return min(
         calculate_time_x(x, y, z, phi, psi), 
         calculate_time_y(x, y, z, phi, psi), 
         calculate_time_z(x, y, z, phi, psi)
     )
-    return tmin
 
 def simulate_flight_all_adsorptions(x, y, z):
-    adsorption_xs = []
-    adsorption_xs.append(x)  # Add initial adsorption point
+    adsorption_xs = [x]
     while not (z == CAVE_HEIGHT and np.sqrt(x**2 + y**2) < CAVE_WIDTH / 2):
         phi = np.random.uniform(0, 2 * np.pi)
-        U = np.random.uniform(0, 1)
-        psi = np.arcsin(np.sqrt(U))
+        psi = np.arcsin(np.sqrt(np.random.uniform(0, 1)))
 
-        min_time = get_minimum_time(x, y, z, phi, psi)
-        vel_x = get_velocity_x(x, y, z, phi, psi)
-        vel_y = get_velocity_y(x, y, z, phi, psi)
-        vel_z = get_velocity_z(x, y, z, phi, psi)
+        dt = get_minimum_time(x, y, z, phi, psi)
+        vx = get_velocity_x(x, y, z, phi, psi)
+        vy = get_velocity_y(x, y, z, phi, psi)
+        vz = get_velocity_z(x, y, z, phi, psi)
 
-        new_x = x + vel_x * min_time
-        new_y = y + vel_y * min_time
-        new_z = z + vel_z * min_time
+        x, y, z = round(x + vx * dt, 2), round(y + vy * dt, 2), round(z + vz * dt, 2)
 
-        if not (new_z == CAVE_HEIGHT and np.sqrt(new_x**2 + new_y**2) < CAVE_WIDTH / 2):
-            adsorption_xs.append(round(new_x, 2))
-
-        x = round(new_x, 2)
-        y = round(new_y, 2)
-        z = round(new_z, 2)
+        if not (z == CAVE_HEIGHT and np.sqrt(x**2 + y**2) < CAVE_WIDTH / 2):
+            adsorption_xs.append(x)
     return adsorption_xs
 
 def run_simulation_process(cond):
-    """
-    Run simulation and return results as a list of lists.
-    Format: [[particle_id, adsorption_count, adsorption_x], ...]
-    """
-    global_particle_id, x, y, z = cond
+    """Run flight simulation and return particle trace data."""
+    particle_id, x, y, z = cond
     adsorption_xs = simulate_flight_all_adsorptions(x, y, z)
+    return [[particle_id, count, x_val] for count, x_val in enumerate(adsorption_xs)]
 
-    result = []
-    for count, x_val in enumerate(adsorption_xs):
-        result.append([global_particle_id, count, x_val])
-    return result
-
-# --- Main process ---
 if __name__ == "__main__":
-    num = int(np.log10(NUM_MOLECULES) + 2)
-    # Get directory of the script
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    # Create directory based on CAVE_LENGTH
-    output_dir = os.path.join(base_dir, f"{CAVE_LENGTH}m")
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"3D_{CAVE_LENGTH}m_1stinc_10^{num}_Knu.csv")
-    
-    all_counts = []
-    all_distances = []
-    
-    # Run 100 loops
-    for loop in range(TOTAL_SIMULATIONS):
-        # Generate initial conditions for this loop
-        r = np.random.uniform(0, CAVE_WIDTH / 2, NUM_MOLECULES)
-        angle = np.random.uniform(0, 2 * np.pi, NUM_MOLECULES)
-        x = r * np.cos(angle)
-        y = r * np.sin(angle)
-        z = np.zeros(NUM_MOLECULES)
-        
-        particle_id_offset = loop * NUM_MOLECULES
-        initial_conditions = list(
-            zip(range(particle_id_offset, particle_id_offset + NUM_MOLECULES), x, y, z)
-        )
-        
-        # Execute simulation for this loop
-        with ProcessPoolExecutor(max_workers=22) as executor:
-            # Parallel processing
-            results = list(executor.map(run_simulation_process, initial_conditions))
-        
-        # Flatten results and update lists
-        for particle_data in results:
-            all_counts.append(len(particle_data))
-            # Assuming distance is related to number of adsorption points 
-            # (adjust logic here if 'total_distances' calculation differs)
-            all_distances.append(len(particle_data)) 
-    
-        df = pd.DataFrame(
-            {
-                "Counts": all_counts,
-                "total_distances": all_distances,
-            }
-        )
+    data_file = "adsorption_data_10_6_sim_include0.csv"
 
-        df.to_csv(output_path, index=False)
-        print(f"Loop {loop + 1}/100 completed: Current total particles = {len(all_counts)}")
+    # Do not add header if file already exists
+    file_exists = os.path.isfile(data_file)
+    mode = "a" if file_exists else "w"
+
+    print(f"Starting simulation. Results will be saved to '{data_file}'.")
+
+    with open(data_file, mode, newline="") as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(
+                ["particle_id", "adsorption_count", "adsorption_x"]
+            )  # Header
+
+        for loop_count in range(TOTAL_SIMULATIONS):
+            print(f"--- Starting loop {loop_count + 1}/{TOTAL_SIMULATIONS} ---")
+
+            # Generate initial conditions
+            r = np.random.uniform(0, CAVE_WIDTH / 2, NUM_MOLECULES)
+            angle = np.random.uniform(0, 2 * np.pi, NUM_MOLECULES)
+            x = r * np.cos(angle)
+            y = r * np.sin(angle)
+            z = np.zeros(NUM_MOLECULES)
+
+            # Global unique ID offset
+            particle_id_offset = loop_count * NUM_MOLECULES
+
+            # Execute simulation using ProcessPoolExecutor
+            with ProcessPoolExecutor(max_workers=22) as executor:
+                initial_conditions = list(
+                    zip(range(particle_id_offset, particle_id_offset + NUM_MOLECULES), x, y, z)
+                )
+                futures = [
+                    executor.submit(run_simulation_process, cond)
+                    for cond in initial_conditions
+                ]
+
+                for i, future in enumerate(as_completed(futures)):
+                    rows = future.result()
+                    writer.writerows(rows)
+                    # Show progress every 100 particles
+                    if (i + 1) % 100 == 0:
+                        print(f"  > Saved results for particle {i + 1}/{NUM_MOLECULES}.", end="\r")
+            print(f"\n--- Loop {loop_count + 1} completed. ---")
+
+    print("\nSimulation and data saving completed.")
