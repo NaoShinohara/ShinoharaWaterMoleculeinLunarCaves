@@ -3,186 +3,129 @@ import os
 import csv
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# 設定パラメータ（変更なし）
-l = 300
-n = 10000  # 1回あたりの分子数
-total_simulations = 100  # 実行するループ回数
-L = 100
-d = 60
-z0 = 0
+# Simulation Parameters
+CAVE_LENGTH = 300
+CAVE_WIDTH = 100
+CAVE_HEIGHT = 60
+PARTICLES_PER_SIM = 10000 
+TOTAL_SIMULATIONS = 100 
+Z_ORIGIN = 0
 
-
-# 既存の関数は変更しない
-# velocity_x, velocity_y, velocity_z, time_x, time_y, time_z, minimum_time, simulate_flight_all_adsorptions
-def velocity_x(x, y, z, phi, psi):
-    # ... (既存のコードをそのまま利用) ...
-    if z == z0 or -z0:
+def get_velocity_x(x, y, z, phi, psi):
+    """Calculates x-component of velocity."""
+    if z == Z_ORIGIN or z == -Z_ORIGIN:
         return np.cos(phi) * np.cos(psi)
-    elif z == d:
+    elif z == CAVE_HEIGHT:
         return -np.cos(phi) * np.cos(psi)
-    elif y == L / 2:
+    elif y == CAVE_WIDTH / 2:
         return -np.cos(phi) * np.cos(psi)
-    elif y == -L / 2:
+    elif y == -CAVE_WIDTH / 2:
         return np.cos(phi) * np.cos(psi)
-    elif x == l:
+    elif x == CAVE_LENGTH:
         return -np.sin(psi)
-    elif x == -l:
+    elif x == -CAVE_LENGTH:
         return np.sin(psi)
 
-
-def velocity_y(x, y, z, phi, psi):
-    # ... (既存のコードをそのまま利用) ...
-    if z == z0 or -z0:
+def get_velocity_y(x, y, z, phi, psi):
+    """Calculates y-component of velocity."""
+    if z == Z_ORIGIN or z == -Z_ORIGIN:
         return np.sin(phi) * np.cos(psi)
-    elif z == d:
+    elif z == CAVE_HEIGHT:
         return -np.sin(phi) * np.cos(psi)
-    elif y == L / 2:
+    elif y == CAVE_WIDTH / 2:
         return -np.sin(psi)
-    elif y == -L / 2:
+    elif y == -CAVE_WIDTH / 2:
         return np.sin(psi)
-    elif x == l:
+    elif x == CAVE_LENGTH:
         return np.cos(phi) * np.cos(psi)
-    elif x == -l:
+    elif x == -CAVE_LENGTH:
         return -np.cos(phi) * np.cos(psi)
 
-
-def velocity_z(x, y, z, phi, psi):
-    # ... (既存のコードをそのまま利用) ...
-    if z == z0 or -z0:
+def get_velocity_z(x, y, z, phi, psi):
+    """Calculates z-component of velocity."""
+    if z == Z_ORIGIN or z == -Z_ORIGIN:
         return np.sin(psi)
-    elif z == d:
+    elif z == CAVE_HEIGHT:
         return -np.sin(psi)
-    elif y == L / 2:
+    elif y == CAVE_WIDTH / 2:
         return np.sin(phi) * np.cos(psi)
-    elif y == -L / 2:
+    elif y == -CAVE_WIDTH / 2:
         return np.sin(phi) * np.cos(psi)
-    elif x == l:
+    elif x == CAVE_LENGTH:
         return np.sin(phi) * np.cos(psi)
-    elif x == -l:
+    elif x == -CAVE_LENGTH:
         return np.sin(phi) * np.cos(psi)
 
+def calculate_time_to_wall(x, y, z, phi, psi):
+    """Calculates time until collision with walls."""
+    vx = get_velocity_x(x, y, z, phi, psi)
+    vy = get_velocity_y(x, y, z, phi, psi)
+    vz = get_velocity_z(x, y, z, phi, psi)
+    
+    tx = (CAVE_LENGTH - x) / vx if vx >= 0 else (CAVE_LENGTH + x) / abs(vx)
+    ty = ((CAVE_WIDTH / 2) - y) / vy if vy >= 0 else ((CAVE_WIDTH / 2) + y) / abs(vy)
+    tz = (CAVE_HEIGHT - z) / vz if vz >= 0 else z / abs(vz)
+    
+    return min(tx, ty, tz)
 
-def time_x(x, y, z, phi, psi):
-    # ... (既存のコードをそのまま利用) ...
-    vx = velocity_x(x, y, z, phi, psi)
-    if vx >= 0:
-        return (l - x) / vx
-    elif vx < 0:
-        return (l + x) / abs(vx)
-
-
-def time_y(x, y, z, phi, psi):
-    # ... (既存のコードをそのまま利用) ...
-    vy = velocity_y(x, y, z, phi, psi)
-    if vy >= 0:
-        return ((L / 2) - y) / vy
-    elif vy < 0:
-        return ((L / 2) + y) / abs(vy)
-
-
-def time_z(x, y, z, phi, psi):
-    # ... (既存のコードをそのまま利用) ...
-    vz = velocity_z(x, y, z, phi, psi)
-    if vz >= 0:
-        return (d - z) / vz
-    elif vz < 0:
-        return z / abs(vz)
-
-
-def minimum_time(x, y, z, phi, psi):
-    tmin = min(
-        time_x(x, y, z, phi, psi), time_y(x, y, z, phi, psi), time_z(x, y, z, phi, psi)
-    )
-    return tmin
-
-
-def simulate_flight_all_adsorptions(x, y, z):
-    adsorption_xs = []
-    adsorption_xs.append(x)  # 最初の吸着点を追加
-    while not (z == d and np.sqrt(x**2 + y**2) < L / 2):
+def simulate_particle_flight(x, y, z):
+    """Simulates particle trajectory and records adsorption points."""
+    adsorption_history = [x]
+    
+    # Continue until absorbed on the top surface
+    while not (z == CAVE_HEIGHT and np.sqrt(x**2 + y**2) < CAVE_WIDTH / 2):
         phi = np.random.uniform(0, 2 * np.pi)
-        U = np.random.uniform(0, 1)
-        psi = np.arcsin(np.sqrt(U))
+        psi = np.arcsin(np.sqrt(np.random.uniform(0, 1)))
 
-        min_time = minimum_time(x, y, z, phi, psi)
-        vel_x = velocity_x(x, y, z, phi, psi)
-        vel_y = velocity_y(x, y, z, phi, psi)
-        vel_z = velocity_z(x, y, z, phi, psi)
+        dt = calculate_time_to_wall(x, y, z, phi, psi)
+        
+        x += get_velocity_x(x, y, z, phi, psi) * dt
+        y += get_velocity_y(x, y, z, phi, psi) * dt
+        z += get_velocity_z(x, y, z, phi, psi) * dt
 
-        new_x = x + vel_x * min_time
-        new_y = y + vel_y * min_time
-        new_z = z + vel_z * min_time
+        if not (z == CAVE_HEIGHT and np.sqrt(x**2 + y**2) < CAVE_WIDTH / 2):
+            adsorption_history.append(round(x, 2))
 
-        if not (new_z == d and np.sqrt(new_x**2 + new_y**2) < L / 2):
-            adsorption_xs.append(round(new_x, 2))
+    return adsorption_history
 
-        x = round(new_x, 2)
-        y = round(new_y, 2)
-        z = round(new_z, 2)
-    return adsorption_xs
+def run_simulation(args):
+    """Worker function for parallel processing."""
+    particle_id, x, y, z = args
+    history = simulate_particle_flight(x, y, z)
+    return [[particle_id, count, x_val] for count, x_val in enumerate(history)]
 
-
-def simulate_and_process(cond):
-    """
-    シミュレーションを実行し、結果をリストのリストとして返す。
-    形式: [[particle_id, adsorption_count, adsorption_x], [adsorption_count, adsorption_x], ...]
-    """
-    global_particle_id, x, y, z = cond
-    adsorption_xs = simulate_flight_all_adsorptions(x, y, z)
-
-    result = []
-    for count, x_val in enumerate(adsorption_xs):
-        result.append([global_particle_id, count, x_val])
-    return result
-
-
-# --- メイン処理 ---
 if __name__ == "__main__":
-    data_file = "adsorption_data_10_6_sim_include0.csv"
+    output_csv = "adsorption_data.csv"
+    file_exists = os.path.isfile(output_csv)
+    
+    print(f"Starting simulation. Results will be saved to '{output_csv}'.")
 
-    # CSVファイルが既に存在する場合はヘッダーを追加しない
-    file_exists = os.path.isfile(data_file)
-    mode = "a" if file_exists else "w"
-
-    print(f"シミュレーションを開始します。結果は '{data_file}' に保存されます。")
-
-    with open(data_file, mode, newline="") as f:
+    with open(output_csv, "a", newline="") as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(
-                ["particle_id", "adsorption_count", "adsorption_x"]
-            )  # ヘッダー
+            writer.writerow(["particle_id", "adsorption_count", "adsorption_x"])
 
-        for loop_count in range(total_simulations):
-            print(f"--- ループ {loop_count + 1}/{total_simulations} を開始します ---")
+        for loop in range(TOTAL_SIMULATIONS):
+            print(f"--- Starting iteration {loop + 1}/{TOTAL_SIMULATIONS} ---")
 
-            # 初期条件生成
-            r = np.random.uniform(0, L / 2, n)
-            angle = np.random.uniform(0, 2 * np.pi, n)
-            x = r * np.cos(angle)
-            y = r * np.sin(angle)
-            z = np.zeros(n)
+            # Generate initial positions
+            r = np.random.uniform(0, CAVE_WIDTH / 2, PARTICLES_PER_SIM)
+            angle = np.random.uniform(0, 2 * np.pi, PARTICLES_PER_SIM)
+            init_x = r * np.cos(angle)
+            init_y = r * np.sin(angle)
+            init_z = np.zeros(PARTICLES_PER_SIM)
 
-            # グローバルな一意のIDオフセット
-            particle_id_offset = loop_count * n
-
-            # 修正箇所: simulate_and_processに渡す引数を修正
-            # forループでタプルを展開するのではなく、zip()に渡す引数を修正
             with ProcessPoolExecutor(max_workers=22) as executor:
-                initial_conditions = list(
-                    zip(range(particle_id_offset, particle_id_offset + n), x, y, z)
-                )
-                futures = [
-                    executor.submit(simulate_and_process, cond)
-                    for cond in initial_conditions
+                tasks = [
+                    (loop * PARTICLES_PER_SIM + i, init_x[i], init_y[i], init_z[i])
+                    for i in range(PARTICLES_PER_SIM)
                 ]
+                
+                futures = [executor.submit(run_simulation, task) for task in tasks]
 
                 for i, future in enumerate(as_completed(futures)):
-                    rows = future.result()
-                    writer.writerows(rows)
-                    # 進行状況を100粒子ごとに表示
+                    writer.writerows(future.result())
                     if (i + 1) % 100 == 0:
-                        print(f"  > 粒子 {i + 1}/{n} の結果を保存しました。", end="\r")
-            print(f"\n--- ループ {loop_count + 1} が完了しました。 ---")
-
-    print("\nシミュレーションとデータ保存が完了しました。")
+                        print(f"  > Progress: {i + 1}/{PARTICLES_PER_SIM} particles saved.", end="\r")
+            
+            print(f"\n--- Iteration {loop + 1} completed. ---")
