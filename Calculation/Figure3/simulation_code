@@ -12,7 +12,7 @@ NUM_MOLECULES = 10000  # Number of molecules per simulation
 TOTAL_SIMULATIONS = 100  # Number of simulation loops
 CAVE_WIDTH = 100
 CAVE_HEIGHT = 60
-LD = np.int(CAVE_LENGTH/CAVE_WIDTH)
+LD = int(CAVE_LENGTH/CAVE_WIDTH)
 Z_ORIGIN = 0
 
 def get_velocity_x(x, y, z, phi, psi):
@@ -120,7 +120,7 @@ if __name__ == "__main__":
     # Get directory of the script
     base_dir = os.path.dirname(os.path.abspath(__file__))
     # Create directory based on CAVE_LENGTH
-    output_dir = os.path.join(base_dir, f"{CAVE_LENGTH}m_hist")
+    output_dir = os.path.join(base_dir, f"LD_{LD}")
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, f"output_LD_{LD}.csv")
     print("cwd:", os.getcwd())
