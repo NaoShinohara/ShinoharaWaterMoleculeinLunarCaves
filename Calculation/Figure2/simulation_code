@@ -119,7 +119,7 @@ if __name__ == "__main__":
     # Create directory based on CAVE_LENGTH
     output_dir = os.path.join(base_dir, f"{CAVE_LENGTH}m_hist")
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"3D_{CAVE_LENGTH}m_1stinc_10^{num}_Knu.csv")
+    output_path = os.path.join(output_dir, f"output_{CAVE_LENGTH}m.csv")
     print("cwd:", os.getcwd())
 
     file_exists = os.path.isfile(output_path)
