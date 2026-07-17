@@ -8,7 +8,7 @@ import os
 # Define directory and file naming pattern
 # Get the directory where the script is located
 base_dir = os.path.dirname(os.path.abspath(__file__))
-file_pattern = "3D_{}m_1stinc_10^6_Knu.csv"
+file_pattern = "output_{}m.csv"
 
 def load_data(length):
     path = f"{base_dir}/{length}m/{file_pattern.format(length)}"
