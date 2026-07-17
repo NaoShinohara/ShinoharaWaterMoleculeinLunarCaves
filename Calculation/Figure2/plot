@@ -3,7 +3,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 
-# Parameters (consistent with simulation code)
+# Parameters
+# Cave length (m): selected from 100 m (L/D = 1) to 10,000 m (L/D = 100),
+# assuming a cave diameter of 100 m.
 CAVE_LENGTH = 100
 CAVE_WIDTH = 100
 CAVE_HEIGHT = 60
@@ -47,7 +49,7 @@ if __name__ == "__main__":
     # Get directory of the script
     base_dir = os.path.dirname(os.path.abspath(__file__))
     num = int(np.log10(NUM_MOLECULES) + 2)
-    output_path = os.path.join(base_dir, f"3D_{CAVE_LENGTH}m_1stinc_10^{num}_Knu.csv")
+    output_path = os.path.join(base_dir, f"output_{CAVE_LENGTH}m.csv")
 
     print(f"Reading data from '{output_path}' and generating histograms...")
 
